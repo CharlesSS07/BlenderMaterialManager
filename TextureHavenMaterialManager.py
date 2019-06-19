@@ -1,84 +1,43 @@
+# blender simple material addon test
+
 bl_info = {
-    "name": "Blender-Material-Manager",
+    "name": "TextureHavenMaterialManager",
     "version": (0,0,1),
     "blender": (2,80,0),
     "author": "Charles S Strauss <charles.s.strauss@gmail.com>",
-    "description": "Easy access online materials manager.",
+    "description": "A test addon",
     "category": "Materials"
 }
 
 import bpy
-import os
-import sys
-import requests
-import subprocess
+
 import webbrowser
 import socket
-
-class MaterialWebsiteProperties(bpy.types.PropertyGroup):
-    img_quality: bpy.props.EnumProperty(
-        name='Image Quality',
-        description='Select desired image quality.',
-        items=[
-            ('OP1', '1K', ''),
-            ('OP2', '2K', ''),
-            ('OP3', '4K', ''),
-            ('OP3', '8K', ''),
-            ('OP3', '16K', ''),
-        ]
-    )
-
-class BlenderMaterialManager(bpy.types.Operator):
-    """Downloads and installs materials for easy access."""      # blender will use this as a tooltip for menu items and buttons.
-    bl_idname = "material.bmm"        # unique identifier for buttons and menu items to reference.
-    bl_label = "Blender Material Manager"         # display name in the interface.
-    bl_description = "Onlie Asset Downloader and Installer."  # enable undo for the operator.
-
-    #img_quality = bpy.props.IntProperty('Quality', 'Larger images take up more ram. Select 1K, 2K, 4K, 8K, 16K.', default=4, soft_min=0, soft_max=16, get=)
-    
-    def execute(self, context):        # execute() is called by blender when running the operator.
-        print('BlenderMaterialManager executed')
-        return {'FINISHED'}            # this lets blender know the operator finished successfully.
-
-class MaterialManagerPanel(bpy.types.Panel):
-    """Creates a Panel in the scene context of the properties editor"""
-    bl_label = "Blender Material Manager --"
-    bl_idname = "SCENE_PT_layout"
-    bl_space_type = 'PROPERTIES'
-    bl_region_type = 'WINDOW'
-    bl_context = "material"
-
-    def draw(self, context):
-        wm = context.window_manager
-        #row = self.layout.row()
-        #row.prop(wm.rb_filter, "rb_filter_enum", expand=True)
-        row = self.layout.row()
-        row.operator("bmm.texturehaven", text='TextureHaven.com')
-        row = self.layout.row()
-
-
+import requests
+import os
+import subprocess
 
 class WebParser():
     
     class Resources():
 
-        SUMMARY_FILE = '/home/shelby/Resources/textures/.summary.txt'
-        DIR = '/home/shelby/Resources/textures/'
-        CACHE_DIR = '/home/shelby/Resources/textures/.cache/'
+        SUMMARY_FILE = '~/Resources/textures/.summary.txt'
+        DIR = '~/Resources/textures/'
+        CACHE_DIR = '~/Resources/textures/.cache/'
 
         def get_count():
-            with open(Resources.SUMMARY_FILE, 'r') as f:
+            with open(WebParser.Resources.SUMMARY_FILE, 'r') as f:
                 a = len(f.readlines())
             return a
 
         def get_name(img_quality, map_type, file_type):
             '''Names all images according to same convention.'''
-            num = '%06d' % Resources.get_count() 
+            num = '%06d' % WebParser.Resources.get_count() 
             return num+'_%s_%s.%s'%(img_quality, map_type, file_type)
 
         def write(url, quality, filetype, filename, source, is_zip, map_type):
-            with open(Resources.SUMMARY_FILE, 'a+') as f:
-                f.write('\t'.join([self.filename, *self.fingerprint.values(), self.url])+'\n')
+            with open(WebParser.Resources.SUMMARY_FILE, 'a+') as f:
+                f.write('\t'.join([filename, url, filetype, source, str(is_zip), map_type])+'\n')
     
     def __init__(self):
         
@@ -88,8 +47,9 @@ class WebParser():
         '''Gets html for website. Injects js scripts necessary for server.'''
         w = requests.get(self.get_full_url()).text
         #w = w.replace('</body>', '<script type="text/javascript></script>%s</body>'%(self.get_return_script()))
-        w = w.replace('</body>', '<script type="text/javascript>%s</script></body>'%(self.get_script()))
-        w = self.preprocess_website(w)
+        w = self.preprocess_website(w) # mabey just foward from socket, instead of doing tricky buisness.
+        w = w.replace('</body>', '\n<script>%s</script>\n</body>'%(self.get_script()))
+        #print(w)
         return w
     
     def get_source_name(self):
@@ -141,32 +101,34 @@ class WebParser():
         '''Downloads the images, returned by get_img_urls, unzips zip if file is zip. Names according to order of image in dir.'''
         files = {}
         for url in self.get_img_urls(pic_id, img_quality, file_type):
-            o = paths.join(Resources.CACHE_DIR, 'bmm_%s_cache.zip'%(self.get_source_name()))
+            o = os.path.join(WebParser.Resources.CACHE_DIR, 'bmm_%s_cache.zip'%(self.get_source_name()))
             subprocess.check_output(['curl', url, '-o', o])
             if o[-3:]=='zip':
                 uz = o[:-4]
                 subprocess.check_output(['unzip', o, '-d', uz])
                 for f in os.listdir(uz):
                     map_type = self.get_map_type(f)
-                    n = paths.join(Resources.DIR, Resources.get_name(img_quality, map_type, file_type))
-                    subprocess.run(['mv', paths.join(uz, f), n])
+                    n = os.path.join(WebParser.Resources.DIR, WebParser.Resources.get_name(img_quality, map_type, file_type))
+                    subprocess.run(['mv', '--force', os.path.join(uz, f), n])
                     files[map_type] = n
-                    Resources.write(url, img_quality, file_type, n, self.get_source_name(), True, map_type)
+                    WebParser.Resources.write(url, img_quality, file_type, n, self.get_source_name(), True, map_type)
                 # remove zip file...
             else:
                 map_type = self.get_map_type(o)
-                n = paths.join(Resources.DIR, Resources.get_name(img_quality, map_type, file_type))
+                n = os.path.join(WebParser.Resources.DIR, WebParser.Resources.get_name(img_quality, map_type, file_type))
                 subprocess.run(['mv', o,  n])
-                Resources.write(url, img_quality, file_type, n, self.get_source_name(), False, map_type)
+                WebParser.Resources.write(url, img_quality, file_type, n, self.get_source_name(), False, map_type)
                 files[map_type] = n
         return files
 
 class MaterialServer(WebParser):
     
     def start(self, port):
+        #print('starting server')
         c = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         c.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         c.bind(('localhost', port))
+        webbrowser.open('http://localhost:%s'%port, new=1, autoraise=True)
         c.listen(1)
         running = True
         while running:
@@ -176,17 +138,18 @@ class MaterialServer(WebParser):
             print(line)
             if line[1] == '/':
                 page=  self.get_website()
+                #print(page)
                 #print('page start:', page, '--page end')
                 cfile.write('HTTP/1.0 200 OK\n\n')
                 cfile.write(page)
             else:
                 if '?' in line[1]:
-                    print('found ?')
+                    #print('found ?')
                     if '=' in line[1].split('?')[1]:
-                        print('found =')
+                        #print('found =')
                         if 'pic_id' in line[1]:
                             pic_id = line[1].split('=')[1]
-                            print('found pic_id: %s'%pic_id)
+                            #print('found pic_id: %s'%pic_id)
                             cfile.write('HTTP/1.0 200 OK\n\n')
                             cfile.write('<html><head><title>GetPicID</title></head>')
                             cfile.write('<body><h1>Success! pic_id:%s</h1>'%pic_id)
@@ -198,22 +161,20 @@ class MaterialServer(WebParser):
         
     
     def on_material_select(self, pic_id):
-        print('Image Selected:', pic_id)
-        self.wp.download_and_organize(pic_id, self.img_quality, self.file_type)
-        # load into blender...
-        print('textures downloaded! ready to load into blender')
+        raise NotImplementedError
 
-class TextureHavenButton(bpy.types.Operator, MaterialServer):
-    bl_idname='bmm.texturehaven'
-    bl_label = 'Material'
-    
-    def __init__(self):
-        print('TextureHavenButton init')
-        super().__init__()
-    
+class TextureHavenProperties(bpy.types.PropertyGroup):
+
+    img_quality = bpy.props.EnumProperty(name='Quality', description='select number of pixels', items=[('1k', '1K', ''),('2k', '2K', ''),('4k', '4K', ''),('8k', '8K', ''),('16k', '16K', '')])
+    img_type = bpy.props.EnumProperty(name='Type', description='file type to download', items=[('png', 'PNG', ''),('jpg', 'JPG', '')])
+
+class MATERIAL_OT_startbutton(bpy.types.Operator, MaterialServer):
+    bl_idname = 'material.thstartbutton'
+    bl_label = 'Start Button'
+
     def on_material_select(self, pic_id):
-        print('Image Selected:', pic_id)
-        self.download_and_organize(pic_id, self.img_quality, self.file_type)
+        #print('Image Selected:', pic_id)
+        self.download_and_organize(pic_id, bpy.context.scene.thmm.img_quality, bpy.context.scene.thmm.img_type)
         # load into blender...
         print('textures downloaded! ready to load into blender')
 
@@ -224,8 +185,10 @@ class TextureHavenButton(bpy.types.Operator, MaterialServer):
         return '''
             function set_broadcast_on_click(){
                 var imgs = document.getElementsByClassName('grid-item');
+                //alert("broadcast on click set");
                 for (var i =0;i<imgs.length;i++){
                     imgs[i].onclick = function(){
+                        //alert("image selected!");
                         var pic_id = this.childNodes[1].childNodes[0].childNodes[0].childNodes[0].innerHTML;
                         var xhr = new XMLHttpRequest();
                         xhr.onload = function(){
@@ -236,12 +199,12 @@ class TextureHavenButton(bpy.types.Operator, MaterialServer):
                             //realized I switched h and w, but like the resulting sidepanel.
                         } // success case
                         xhr.onerror = function(){ alert (xhr.responseText); } // failure case
-                        xhr.open ('POST', 'http://localhost:6007', true);
+                        xhr.open ('GET', 'http://localhost:6007/?pic_id='+pic_id, true);
                         xhr.send (pic_id);
                     }
                 }
             }
-            
+            //alert('script ran');
             window.onload = set_broadcast_on_click;
             '''
     
@@ -251,53 +214,56 @@ class TextureHavenButton(bpy.types.Operator, MaterialServer):
     def get_full_url(self):
         return 'https://texturehaven.com/textures/'
 
-    def preprocess_website(self, w): # overidden for webparser
+    def preprocess_website(self, w):
         return w.replace('\\', '').replace('"', "'").replace("'./", "'"+self.get_url()).replace("'/", "'"+self.get_url())
 
     def get_img_urls(self, pic_id, img_quality, file_type): # overidden for webparser
-        return ['https://texturehaven.com/files/textures/zip/%s/%s/%s_%s_%s.zip'%(img_quality, pic_id, pic_id, img_quality, file_type)]
+        files = ['https://texturehaven.com/files/textures/zip/%s/%s/%s_%s_%s.zip'%(img_quality, pic_id, pic_id, img_quality, file_type)]
+        #print('url:', files)
+        return files
 
     def execute(self, context):
-        print('Material button pressed')
-        self.start(6007)
-        print('Material button depressed')
+        scene = context.scene
+        bmm = scene.thmm
+        #print('Material button pressed')
+        port = 6007
+        #print('starting server thread')
+        self.start(port)
+        #print('server thread started')
+        #print('Material button depressed')
         return {'FINISHED'}
 
-class TextureHavenPanel():
-    bl_idname = 'material.TextureHavenPanel'
-    bl_label = 'Texture Haven Panel'
-    bl_space_type = 'PROPERTIES'
-    bl_regeion_type = 'WINDOW'
+class MATERIAL_PT_manager(bpy.types.Panel):
+    bl_idname = 'material.manager'
+    bl_label='TextureHaven.com Material Manager'
     bl_context = 'material'
-    
+    bl_space_type = 'PROPERTIES'
+    bl_region_type = 'WINDOW'
+    bl_category = 'Materials'
+
     def draw(self, context):
         layout = self.layout
         scene = context.scene
-        thmm = scene.thmm
-        
-        layout.prop(thmm, 'img_quality')
-        layout.prop(thmm, 'bmm.texturehaven')
+        bmm = scene.thmm
+        layout.prop(bmm, 'img_quality')
+        layout.prop(bmm, 'img_type')
+        layout.operator('material.thstartbutton', text='TextureHaven.com')
         layout.separator()
-        
+    
+
+classes = [TextureHavenProperties, MATERIAL_OT_startbutton, MATERIAL_PT_manager]
+
 def register():
     from bpy.utils import register_class
-    register_class(MaterialWebsiteProperties)
-    register_class(BlenderMaterialManager)
-    register_class(MaterialManagerPanel)
-    register_class(TextureHavenButton)
-    #register_class(TextureHavenPanel)
-    bpy.types.Scene.thmm = bpy.props.PointerProperty(type=MaterialWebsiteProperties)
+    for cls in classes:
+        register_class(cls)
+    bpy.types.Scene.thmm = bpy.props.PointerProperty(type=TextureHavenProperties)
 
 def unregister():
     from bpy.utils import unregister_class
-    unregister_class(MaterialWebsiteProperties)
-    unregister_class(BlenderMaterialManager)
-    unregister_class(MaterialManagerPanel)
-    unregister_class(TextureHavenButton)
-    unregister_class(TextureHavenPanel)
-    #del bpy.types.Scene.thmm
+    for cls in classes:
+        unregister_class(cls)
+    del bpy.types.Scene.thmm
 
-# This allows you to run the script directly from blenders text editor
-# to test the addon without having to install it.
-if __name__ == "__main__":
+if __name__=='__main__':
     register()
