@@ -117,8 +117,7 @@ class WebParser():
         '''Finds all urls that need to be downloaded for this material. Including color, bump, normal, roughness...'''
         return ['http://images7.memedroid.com/images/UPLOADED628/587fe55c29eb7.jpeg', 'https://pics.me.me/60-of-the-time-it-works-every-time-60-of-15242762.png', 'https://pbs.twimg.com/media/DvFsnoDXQAAaCaW.jpg', 'https://www.memecreator.org/static/images/memes/4982344.jpg']
     
-    @staticmethod
-    def get_map_type(path):
+    def get_map_type(self, path):
         '''Highly universal function for deciding what kind of map this file is. Is is a color map? Is it a roughness map? Is it a bump map?'''
         maps = {
             'color': ['color', 'diffuse', 'diff', 'albedo'],
@@ -199,17 +198,13 @@ class MaterialServer(WebParser):
     
     def on_material_select(self, pic_id):
         print('Image Selected:', pic_id)
-        self.wp.download_and_organize(pic_id, self.img_quality, self.file_type)
+        self.download_and_organize(pic_id, self.img_quality, self.file_type)
         # load into blender...
         print('textures downloaded! ready to load into blender')
 
 class TextureHavenButton(bpy.types.Operator, MaterialServer):
     bl_idname='bmm.texturehaven'
     bl_label = 'Material'
-    
-    def __init__(self):
-        print('TextureHavenButton init')
-        super().__init__()
     
     def on_material_select(self, pic_id):
         print('Image Selected:', pic_id)

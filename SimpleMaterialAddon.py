@@ -1,3 +1,4 @@
+# blender simple material addon test
 
 bl_info = {
     "name": "TextureHavenMaterialManager",
@@ -33,22 +34,7 @@ class WebParser():
             '''Names all images according to same convention.'''
             num = '%06d' % WebParser.Resources.get_count() 
             return num+'_%s_%s.%s'%(img_quality, map_type, file_type)
-        
-        def is_downloaded(url):
-            '''Returns files locations if true, returns False if resource is not downloaded.'''
-            with open(WebParser.Resources.SUMMARY_FILE, 'r') as f:
-                downloaded = False
-                lines = {}
-                for l in  f.readlines(): # split lines leaves the \n on each line
-                    fp = l.split('\t')
-                    if fp[1]==url:
-                        downloaded = True
-                        map_type = fp[5][:-1] # get last element, which should have a \n on it becuse of how split lines works
-                        lines[map_type] = fp[0]
-                if downloaded:
-                    return lines
-                return False
-        
+
         def write(url, quality, filetype, filename, source, is_zip, map_type):
             with open(WebParser.Resources.SUMMARY_FILE, 'a+') as f:
                 f.write('\t'.join([filename, url, filetype, source, str(is_zip), map_type])+'\n')
@@ -91,25 +77,22 @@ class WebParser():
         '''Finds all urls that need to be downloaded for this material. Including color, bump, normal, roughness...'''
         return ['http://images7.memedroid.com/images/UPLOADED628/587fe55c29eb7.jpeg', 'https://pics.me.me/60-of-the-time-it-works-every-time-60-of-15242762.png', 'https://pbs.twimg.com/media/DvFsnoDXQAAaCaW.jpg', 'https://www.memecreator.org/static/images/memes/4982344.jpg']
     
-    def get_map_type(self, path, pic_id):
+    def get_map_type(path):
         '''Highly universal function for deciding what kind of map this file is. Is is a color map? Is it a roughness map? Is it a bump map?'''
         maps = {
             'color': ['color', 'diffuse', 'diff', 'albedo'],
             'rough': ['roughness', 'rough', 'rgh'],
             'metal': ['metal', 'metallic', 'met'],
-            'height':['height', 'disp', 'displacement', 'bump'],
-            'normal':['normal', 'nor', 'nrm'],
+            'height':['height', 'disp', 'displacement'],
+            'normal':['normal', 'nor', 'nrm', 'bump'],
             'spec':  ['spec', 'specular', 'specularity'],
             'ao':    ['ao', 'ambientocclusion', 'ambient_occlusion'],
             'mask':  ['mask', 'alpha']
         }
-        f = path.replace(pic_id, '') # to get rid of useless or confusing words, like in the pic_id "rough_block_wall_..." rough is accidentally interpreted.
-        f = f.split('/')[-1].lower() # get file, instead of path, make it lower case, because we don't care about case
-        for k in maps:
+        f = path.split('/')[-1].lower() # get file, instead of path, make it lower case, because we don't care about case
+        for i, k in enumerate(maps):
             for v in maps[k]:
-                #print('Here', k, v)
                 if v in f:
-                    #print('Key:', k)
                     return k
         raise Exception('Function get_map_type could not discriminate the type of map:%s. Implement your own to resolve this error.'%(f))
     
@@ -117,28 +100,24 @@ class WebParser():
         '''Downloads the images, returned by get_img_urls, unzips zip if file is zip. Names according to order of image in dir.'''
         files = {}
         for url in self.get_img_urls(pic_id, img_quality, file_type):
-            downloaded = WebParser.Resources.is_downloaded(url)
-            if downloaded is not False:
-                files = {**downloaded, **files}
-            else:
-                o = os.path.join(WebParser.Resources.CACHE_DIR, 'bmm_%s_cache.zip'%(self.get_source_name()))
-                subprocess.check_output(['curl', url, '-o', o])
-                if o[-3:]=='zip':
-                    uz = o[:-4]
-                    subprocess.check_output(['unzip', o, '-d', uz])
-                    for f in os.listdir(uz):
-                        map_type = self.get_map_type(f, pic_id)
-                        n = os.path.join(WebParser.Resources.DIR, WebParser.Resources.get_name(img_quality, map_type, file_type))
-                        subprocess.run(['mv', '--force', os.path.join(uz, f), n])
-                        files[map_type] = n
-                        WebParser.Resources.write(url, img_quality, file_type, n, self.get_source_name(), True, map_type)
-                    # remove zip file...
-                else:
-                    map_type = self.get_map_type(o, pic_id)
+            o = os.path.join(WebParser.Resources.CACHE_DIR, 'bmm_%s_cache.zip'%(self.get_source_name()))
+            subprocess.check_output(['curl', url, '-o', o])
+            if o[-3:]=='zip':
+                uz = o[:-4]
+                subprocess.check_output(['unzip', o, '-d', uz])
+                for f in os.listdir(uz):
+                    map_type = self.get_map_type(f)
                     n = os.path.join(WebParser.Resources.DIR, WebParser.Resources.get_name(img_quality, map_type, file_type))
-                    subprocess.run(['mv', '--force', o,  n])
-                    WebParser.Resources.write(url, img_quality, file_type, n, self.get_source_name(), False, map_type)
+                    subprocess.run(['mv', '--force', os.path.join(uz, f), n])
                     files[map_type] = n
+                    WebParser.Resources.write(url, img_quality, file_type, n, self.get_source_name(), True, map_type)
+                # remove zip file...
+            else:
+                map_type = self.get_map_type(o)
+                n = os.path.join(WebParser.Resources.DIR, WebParser.Resources.get_name(img_quality, map_type, file_type))
+                subprocess.run(['mv', o,  n])
+                WebParser.Resources.write(url, img_quality, file_type, n, self.get_source_name(), False, map_type)
+                files[map_type] = n
         return files
 
 class MaterialServer(WebParser):
@@ -185,8 +164,8 @@ class MaterialServer(WebParser):
 
 class TextureHavenProperties(bpy.types.PropertyGroup):
 
-    img_quality = bpy.props.EnumProperty(name='Quality', description='select number of pixels', items=[('1k', '1K', 'short download'),('2k', '2K', ''),('4k', '4K', ''),('8k', '8K', 'very long download')])
-    img_type = bpy.props.EnumProperty(name='Type', description='file type to download', items=[('png', 'PNG', 'higher quality, longer download'),('jpg', 'JPG', 'lower quality, short download')])
+    img_quality = bpy.props.EnumProperty(name='Quality', description='select number of pixels', items=[('1k', '1K', ''),('2k', '2K', ''),('4k', '4K', ''),('8k', '8K', ''),('16k', '16K', '')])
+    img_type = bpy.props.EnumProperty(name='Type', description='file type to download', items=[('png', 'PNG', ''),('jpg', 'JPG', '')])
 
 class MATERIAL_OT_startbutton(bpy.types.Operator, MaterialServer):
     bl_idname = 'material.thstartbutton'
@@ -194,69 +173,8 @@ class MATERIAL_OT_startbutton(bpy.types.Operator, MaterialServer):
 
     def on_material_select(self, pic_id):
         #print('Image Selected:', pic_id)
-        files = self.download_and_organize(pic_id, bpy.context.scene.thmm.img_quality, bpy.context.scene.thmm.img_type)
+        self.download_and_organize(pic_id, bpy.context.scene.thmm.img_quality, bpy.context.scene.thmm.img_type)
         # load into blender...
-        # create shader, name it <pic_id>
-        maps = {
-            'color': 'Base Color',# translation of may types to inputs on principled shader
-            'rough': 'Roughness',
-            'metal': 'Metallic',
-            'spec':  'Specular',
-            'ao':    'Base Color',# for now
-            'mask':  'Alpha'
-        }
-        mat = bpy.data.materials.new(pic_id) # create a new material for now. mabey check to see if this material is already created in future to avoid overriding current materials.
-        # start populating tree with required nodes
-        mat.use_nodes = True
-        links = mat.node_tree.links
-        for n in mat.node_tree.nodes:
-            mat.node_tree.nodes.remove(n)
-        principled_node = mat.node_tree.nodes.new(type='ShaderNodeBsdfPrincipled')
-        output_node = mat.node_tree.nodes.new(type='ShaderNodeOutputMaterial')
-        links.new(principled_node.outputs['BSDF'], output_node.inputs['Surface'])
-        displacement_node = mat.node_tree.nodes.new(type='ShaderNodeDisplacement')
-        links.new(displacement_node.outputs['Displacement'], output_node.inputs['Displacement'])
-        normal_map_node = mat.node_tree.nodes.new(type='ShaderNodeNormalMap')
-        bump_node = mat.node_tree.nodes.new(type='ShaderNodeBump')
-        links.new(normal_map_node.outputs['Normal'], bump_node.inputs['Normal'])
-        links.new(bump_node.outputs['Normal'], principled_node.inputs['Normal'])
-        mapping_node = mat.node_tree.nodes.new(type='ShaderNodeMapping')
-        links.new(mat.node_tree.nodes.new(type='ShaderNodeTexCoord').outputs['UV'], mapping_node.inputs['Vector'])
-        for k in files:
-            f = files[k]
-            # load images into blender
-            fname = os.path.basename(f)
-            img_data = bpy.ops.image.open(filepath=f, directory=os.path.dirname(f), files=[{"name":fname, "name":fname}], show_multiview=False)
-            img_data = bpy.data.images[fname] # get the image that was just loaded
-            # create nodes
-            img_node = mat.node_tree.nodes.new(type='ShaderNodeTexImage')
-            # set color transforms to Non-Color for most image types
-
-            # set correct color space settings.
-            img_data.colorspace_settings.name = "Non-Color"
-            if k=='color':
-                img_data.colorspace_settings.name = "sRGB"
-
-            # set image node to use the the correct image
-            img_node.image = img_data
-
-            # link image node to mapping node
-            links.new(mapping_node.outputs['Vector'], img_node.inputs['Vector'])
-
-            # link image node to correct socket, based off of map type (color, normal, roughness...)
-            if k not in {'height', 'normal', 'ao'}:
-                links.new(img_node.outputs['Color'], principled_node.inputs[maps[k]])
-            elif k=='height':
-                links.new(img_node.outputs['Color'], displacement_node.inputs['Height'])
-                links.new(img_node.outputs['Color'], bump_node.inputs['Height'])
-            elif k=='normal':
-                links.new(img_node.outputs['Color'], normal_map_node.inputs['Color'])
-            elif k=='ao':
-                pass # don't seem to have a use for the ao texture. Could this be extra?
-            else:
-                raise TypeError('May type, %s, was not found.'%k)
-
-
         print('textures downloaded! ready to load into blender')
 
     def get_source_name(self):
@@ -273,7 +191,7 @@ class MATERIAL_OT_startbutton(bpy.types.Operator, MaterialServer):
                         var pic_id = this.childNodes[1].childNodes[0].childNodes[0].childNodes[0].innerHTML;
                         var xhr = new XMLHttpRequest();
                         xhr.onload = function(){
-                            //alert (xhr.responseText);
+                            alert (xhr.responseText);
                             var w = window.innerWidth*0.7;
                             var h = window.innerHeight*0.7;
                             window.open('https://www.patreon.com/TextureHaven/overview', 'DONATE!!', "height="+w+",width="+h);
@@ -300,7 +218,7 @@ class MATERIAL_OT_startbutton(bpy.types.Operator, MaterialServer):
 
     def get_img_urls(self, pic_id, img_quality, file_type): # overidden for webparser
         files = ['https://texturehaven.com/files/textures/zip/%s/%s/%s_%s_%s.zip'%(img_quality, pic_id, pic_id, img_quality, file_type)]
-        #print('url:', files)
+        print('url:', files)
         return files
 
     def execute(self, context):
