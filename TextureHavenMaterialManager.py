@@ -198,12 +198,12 @@ class MATERIAL_OT_startbutton(bpy.types.Operator, MaterialServer):
         # load into blender...
         # create shader, name it <pic_id>
         maps = {
-            'color': 'Base Color',# translation of may types to inputs on principled shader
-            'rough': 'Roughness',
-            'metal': 'Metallic',
-            'spec':  'Specular',
-            'ao':    'Base Color',# for now
-            'mask':  'Alpha'
+            'color': ['Base Color', 0],# translation of may types to inputs on principled shader
+            'rough': ['Roughness', -250],
+            'metal': ['Metallic', -500],
+            'spec':  ['Specular', -1000],
+            'ao':    ['Base Color', -100],# for now
+            'mask':  ['Alpha', -1500]
         }
         mat = bpy.data.materials.new(pic_id) # create a new material for now. mabey check to see if this material is already created in future to avoid overriding current materials.
         # start populating tree with required nodes
@@ -213,15 +213,25 @@ class MATERIAL_OT_startbutton(bpy.types.Operator, MaterialServer):
             mat.node_tree.nodes.remove(n)
         principled_node = mat.node_tree.nodes.new(type='ShaderNodeBsdfPrincipled')
         output_node = mat.node_tree.nodes.new(type='ShaderNodeOutputMaterial')
+        output_node.location.x = 1250/2
         links.new(principled_node.outputs['BSDF'], output_node.inputs['Surface'])
         displacement_node = mat.node_tree.nodes.new(type='ShaderNodeDisplacement')
+        displacement_node.location.x = 750/2
+        displacement_node.location.y = -250/2
         links.new(displacement_node.outputs['Displacement'], output_node.inputs['Displacement'])
         normal_map_node = mat.node_tree.nodes.new(type='ShaderNodeNormalMap')
+        normal_map_node.location.x = -900/2
+        normal_map_node.location.y = -1000/2
         bump_node = mat.node_tree.nodes.new(type='ShaderNodeBump')
+        bump_node.location.x = -400/2
+        bump_node.location.y = -900/2
         links.new(normal_map_node.outputs['Normal'], bump_node.inputs['Normal'])
         links.new(bump_node.outputs['Normal'], principled_node.inputs['Normal'])
+        tex_coords_node = mat.node_tree.nodes.new(type='ShaderNodeTexCoord')
+        tex_coords_node.location.x = -2700/2
         mapping_node = mat.node_tree.nodes.new(type='ShaderNodeMapping')
-        links.new(mat.node_tree.nodes.new(type='ShaderNodeTexCoord').outputs['UV'], mapping_node.inputs['Vector'])
+        mapping_node.location.x = -2200/2
+        links.new(tex_coords_node.outputs['UV'], mapping_node.inputs['Vector'])
         for k in files:
             f = files[k]
             # load images into blender
@@ -240,18 +250,26 @@ class MATERIAL_OT_startbutton(bpy.types.Operator, MaterialServer):
             # set image node to use the the correct image
             img_node.image = img_data
 
+            # minimize the image node, because this shouldn't need much more editing by the user.
+            img_node.hide = True
+
             # link image node to mapping node
             links.new(mapping_node.outputs['Vector'], img_node.inputs['Vector'])
 
-            # link image node to correct socket, based off of map type (color, normal, roughness...)
+            # link image node to correct socket, based off of map type (color, normal, roughness...) also, set positions in node editor
+            img_node.location.x = -1500/2
             if k not in {'height', 'normal', 'ao'}:
-                links.new(img_node.outputs['Color'], principled_node.inputs[maps[k]])
+                img_node.location.y = maps[k][1]
+                links.new(img_node.outputs['Color'], principled_node.inputs[maps[k][0]])
             elif k=='height':
+                img_node.location.y = -900/2
                 links.new(img_node.outputs['Color'], displacement_node.inputs['Height'])
                 links.new(img_node.outputs['Color'], bump_node.inputs['Height'])
             elif k=='normal':
+                img_node.location.y = 300/2
                 links.new(img_node.outputs['Color'], normal_map_node.inputs['Color'])
             elif k=='ao':
+                img_node.location.y = 400/2
                 pass # don't seem to have a use for the ao texture. Could this be extra?
             else:
                 raise TypeError('May type, %s, was not found.'%k)
